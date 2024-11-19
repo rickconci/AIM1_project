@@ -1,0 +1,10 @@
+__pycache__
+data_clean/textbooks/
+data_clean/questions/Mainland/
+data_clean/questions/Taiwan/
+data_clean/questions/US/4_options/
+data_clean/questions/US/metamap_extracted_phrases/
+data_clean/questions/US/dev.jsonl
+data_clean/questions/US/test.jsonl
+data_clean/questions/US/train.jsonl
+test.ipynb
