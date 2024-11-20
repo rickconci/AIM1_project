@@ -79,6 +79,29 @@ def GPT_api(system_prompt, prompt, n_responses, model="gpt-4o-mini"):
 
     return responses
 
+#select questions that ask about differenrital diagnosis 
+
+def select_differential_diagnosis_questions(data, system_prompt_question):
+    #select questions that ask about differential diagnosis
+    #return the indices of the selected questions
+    for i in range(len(data)):
+        print(i / len(data))
+        question = data[i]['question']
+        options = data[i]['options']
+        #select only the sentence with a ?
+        sentence_with_questions = re.findall(r'[^.?!]*\?', question)
+        input = sentence_with_questions[0] + str(options)
+        print(input)
+        GPT_diff_diag_class = GPT_api(system_prompt_question, input, 1)
+        print(GPT_diff_diag_class[0])
+        if GPT_diff_diag_class[0] == 'true':
+            print('differential diagnosis question')
+            data[i]['diag_question'] = True
+        elif GPT_diff_diag_class[0] == 'false':
+            data[i]['diag_question'] = False
+        
+    return data
+
 
 
 def run_LLM(data, system_prompt_final_letter, system_prompt_reasoning, iterations, relevant_noise=False, options_augment=False):
