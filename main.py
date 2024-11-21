@@ -1,24 +1,38 @@
 from LLM_noise_utils import *
+from plotting import *
 import pickle
 
 
 
 
-def main(data):
+def main(data, model, plot=True):
 
+    print('Running LLM without augmentation')
+    answer_distribution_no_augment_dict = run_LLM(data, system_prompt_final_letter_no_augment, system_prompt_reasoning_no_augment, 5, options_augment = True, options_to_add = ['None of the above'], model=model, save_every=10, save_file ='answer_distribution_no_augment_dict_'+model+'.pkl' )
+    entropy_no_augment_dict = calculate_entropy(data, answer_distribution_no_augment_dict)
+    accuracy_no_augment_average, corrected_answers_no_augment = evaluate_accuracy_uncertainty(data, answer_distribution_no_augment_dict)
 
-    answer_distribution_no_augment_all = run_LLM(data, system_prompt_final_letter, system_prompt_reasoning, 1, options_augment = False)
-    entropy_no_augment_all = calculate_entropy(data, answer_distribution_no_augment_all)
+    print('Running LLM with augmentation')
+    answer_distribution_augment_dict = run_LLM(data, system_prompt_final_letter_augment, system_prompt_reasoning_augment, 3, options_augment = True, options_to_add = ['I am uncertain. More information needed.','None of the above'], model=model, save_every=10, save_file ='answer_distribution_augment_dict_'+model+'.pkl' )
+    entropy_augment_dict = calculate_entropy(data, answer_distribution_augment_dict)
+    accuracy_augment_average, corrected_answers_augment = evaluate_accuracy_uncertainty(data, answer_distribution_augment_dict)
     
-    accuracy_no_augment = evaluate_accuracy(data, answer_distribution_no_augment_all)
+    print('Accuracy no augmentation: ', accuracy_no_augment_average)
+    print('Accuracy augmentation: ', accuracy_augment_average)
 
-    answer_distribution_augment = run_LLM(data, system_prompt_final_letter, system_prompt_reasoning, 1, options_augment = True)
-    accuracy_augment, most_common_answers_augment = run_LLM(data, system_prompt_final_letter, system_prompt_reasoning, 1, options_augment = True)
+    print('Saving to pickle files')
+    save_to_pickle(entropy_no_augment_dict, 'entropy_no_augment_dict_'+model+'.pkl')
+    save_to_pickle(corrected_answers_no_augment, 'corrected_no_augment_dict_'+model+'.pkl')
+    save_to_pickle(entropy_augment_dict, 'entropy_augment_dict_'+model+'.pkl')
+    save_to_pickle(corrected_answers_augment, 'corrected_augment_dict_'+model+'.pkl')
 
-    print(accuracy_no_augment, most_common_answers_no_augment)
-    print(accuracy_augment, most_common_answers_augment)
+    if plot:
+        plot_entropy_vs_accuracy_bar(entropy_no_augment_dict, corrected_answers_no_augment, bins=5)
+        plot_entropy_vs_accuracy_bar(entropy_no_augment_dict, corrected_answers_augment, bins=5)
 
-    return accuracy_no_augment, accuracy_augment, most_common_answers_no_augment, most_common_answers_augment
+    
+    return None 
+
 
 if __name__ == "__main__":
 
@@ -27,13 +41,18 @@ if __name__ == "__main__":
     
     #subset data to only include differential diagnosis questions
     if not os.path.exists('diag_questions.pkl'):
+        print('Selecting differential diagnosis questions')
         data_with_diag_questions = select_differential_diagnosis_questions(data, system_prompt_question)
         diag_questions = [data_with_diag_questions[i] for i in range(len(data_with_diag_questions)) if data_with_diag_questions[i]['diag_question'] == True]
         with open('diag_questions.pkl', 'wb') as file:
             pickle.dump(diag_questions, file)
     else:
+        print('Loading diag_questions from pickle file')
         with open('diag_questions.pkl', 'rb') as file:
             diag_questions = pickle.load(file)
 
-
-    main(diag_questions)
+    #CHANGE THIS!!! 
+    model = 'gpt-4o'
+    data_subset = diag_questions[:1000]
+    
+    main(data_subset, model, plot=True)

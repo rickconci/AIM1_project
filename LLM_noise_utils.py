@@ -12,13 +12,19 @@ import copy
 import re
 from collections import Counter
 import time
+import pickle
 
 
-
-
-system_prompt_reasoning = "You are an excellent clinician. Reason through these questions step by step and pick only the letter of the correct answer from the options provided. If you are unsure pick the \'More information needed' option. If you believe the correct answer is not included in the options provided, pick the \'None of the above' option. Remember that if the answer is correct you get 2 points, if the answer is incorrect you get -2 points, and if you pick \'More information needed\' it is 0 points if it's not the right answer (instead of -2), and +2 if it is the right answer. "
-system_prompt_final_letter = "You need to extract the final answer from the answer provided. Output it as only the letter of the chosen answer. If the answer is 'None of the above', output 'Z', and if the answer is 'More information needed', output 'Y'."
+#system_prompt_reasoning = "You are an excellent clinician. Reason through these questions step by step and pick only the letter of the correct answer from the options provided. If you are unsure pick the \'More information needed' option. If you believe the correct answer is not included in the options provided, pick the \'None of the above' option. Remember that if the answer is correct you get 2 points, if the answer is incorrect you get -2 points, and if you pick \'More information needed\' it is 0 points if it's not the right answer (instead of -2), and +2 if it is the right answer. "
+#system_prompt_final_letter = "You need to extract the final answer from the answer provided. Output it as only the letter of the chosen answer. If the answer is 'None of the above', output 'Z', and if the answer is 'More information needed', output 'Y'."
 system_prompt_question = "Classify whether the following sentence is asking for a differential diagnosis or not. Output only true or false. For example: Which of the following is the most likely diagnosis?{'A': 'Cirrhosis', 'B': 'Acute lymphoblastic leukemia', 'C': 'Chronic myelogenous leukemia', 'D': 'Myelodysplastic syndrome', 'E': 'Chronic lymphocytic leukemia', 'F': 'Acute myelogenous leukemia'}  would be true, as all of the options given are diagnoses. Similarly, for  Which of the following is the most likely cause of this patient's ocular symptoms?{'A': 'Oculomotor nerve damage', 'B': 'Retrobulbar hemorrhage', 'C': 'Trochlear nerve damage', 'D': 'Medial longitudinal fasciculus damage', 'E': 'Dorsal midbrain damage', 'F': 'Abducens nerve damage'} is also true, as it provides the possible causes of the symptoms." 
+
+
+system_prompt_reasoning_augment = "You are an excellent clinician. Reason through these questions step by step and pick only the letter of the correct answer from the options provided. If you are unsure pick the \'I am Unsure. More information needed' option. If you believe the correct answer is not included in the options provided, pick the \'None of the above' option. Remember that if the answer is correct you get 2 points, if the answer is incorrect you get -2 points, and if you pick \'More information needed\' it is 0 points if it's not the right answer (instead of -2), and +2 if it is the right answer. "
+system_prompt_final_letter_augment = "You need to extract the final answer from the answer provided. Output it as only the letter of the chosen answer. If the answer is 'None of the above', output 'Z', and if the answer is 'More information needed', output 'Y'."
+system_prompt_reasoning_no_augment = "You are an excellent clinician. Reason through these questions step by step and pick only the letter of the correct answer from the options provided.  If you believe the correct answer is not included in the options provided, pick the \'None of the above' option. Remember that if the answer is correct you get 2 points, if the answer is incorrect you get -2 points. "
+system_prompt_final_letter_no_augment = "You need to extract the final answer from the answer provided. Output it as only the letter of the chosen answer. If the answer is 'None of the above', output 'Z'."
+
 
 options_to_add = ['I am uncertain. More information needed.', 'None of the above']
 alphabet = string.ascii_uppercase  # Generates 'A', 'B', 'C', ... 'Z'
@@ -31,6 +37,15 @@ client = AzureOpenAI(
 )
 
 
+def save_to_pickle(data, file_name):
+    with open(file_name, 'wb') as f:
+        pickle.dump(data, f)
+
+
+def load_from_pickle(file_name):
+    with open(file_name, 'rb') as f:
+        return pickle.load(f)
+    
 
 def add_options(data, options_to_add):
     # add two more answer options to each question
@@ -204,17 +219,53 @@ def GPT_api(system_prompt, prompt, n_responses=1, model="gpt-4"):
 
 
 
+def run_LLM(
+    data, 
+    system_prompt_final_letter, 
+    system_prompt_reasoning, 
+    iterations, 
+    options_augment, 
+    options_to_add, 
+    model='gpt-4o-mini', 
+    save_every=50,
+    save_file='answer_distribution.pkl'
+):
+    """
+    Runs the LLM on the provided data and saves progress every 50 iterations.
+    If the process is interrupted, it can resume from the last saved point.
 
-def run_LLM(data, system_prompt_final_letter, system_prompt_reasoning, iterations, options_augment=False, model='gpt-4o-mini'):
+    Parameters:
+        data (list): List of question data dictionaries.
+        system_prompt_final_letter (str): System prompt for extracting the final answer.
+        system_prompt_reasoning (str): System prompt for generating reasoning.
+        iterations (int): Number of iterations to run per question.
+        options_augment (bool): Whether to augment options.
+        options_to_add (list): List of options to add if augmenting.
+        model (str): The model to use.
+        save_file (str): Path to the pickle file for saving progress.
+    """
     
-    data = copy.deepcopy(data)
+
     # Optionally augment the data with additional options
+    data = copy.deepcopy(data)
     if options_augment:
         data = add_options(data, options_to_add)
-    
-    answer_distribution_all = {}
 
+    # Check if a save file exists and load it
+    if os.path.exists(save_file):
+        with open(save_file, 'rb') as f:
+            answer_distribution_all = pickle.load(f)
+        print(f"Loaded saved progress from '{save_file}'.")
+    else:
+        answer_distribution_all = {}
+        print("No saved progress found. Starting from scratch.")
+
+    total_questions = len(data)
     for i, question_data in enumerate(data):
+        if i in answer_distribution_all:
+            print(f"Skipping question {i+1}/{total_questions} (already processed).")
+            continue
+        print(f"Processing question {i+1}/{total_questions}")
         question_prompt = question_data['question'] + str(question_data['options'])
         answer_distribution = []
 
@@ -225,76 +276,192 @@ def run_LLM(data, system_prompt_final_letter, system_prompt_reasoning, iteration
             extracted_answer = GPT_api(system_prompt_final_letter, LLM_answer[0], 1, model=model)
             answer_distribution.append(extracted_answer[0])
 
+        print(f"Answer distribution for question {i+1}: {answer_distribution}")
         # Save the answer distribution for the question
         answer_distribution_all[i] = answer_distribution
+
+        # Save progress every 10 questions
+        if (i + 1) % save_every == 0 or (i + 1) == total_questions:
+            with open(save_file, 'wb') as f:
+                pickle.dump(answer_distribution_all, f)
+            print(f"Progress saved up to question {i+1} in '{save_file}'.")
+
+    # Final save at the end
+    with open(save_file, 'wb') as f:
+        pickle.dump(answer_distribution_all, f)
+    print(f"All progress saved in '{save_file}'.")
 
     return answer_distribution_all
 
 
-def evaluate_accuracy(data, answer_distribution_all):
+
+def evaluate_accuracy_uncertainty(data, answer_distribution_all, per_repetition=False):
     """
     Evaluates the accuracy of the model's answers.
 
     Parameters:
         data (list): List of question dictionaries with 'answer' key.
         answer_distribution_all (dict): Dictionary mapping question indices to list of answers.
+        per_repetition (bool): If True, calculates accuracy per repetition instead of aggregating answers.
 
     Returns:
-        float: The accuracy of the model.
+        If per_repetition is False:
+            float: The accuracy of the model.
+            dict: The corrected answers, with 'uncertain' values preserved.
+        If per_repetition is True:
+            list: Accuracies for each repetition.
+            list of dict: Corrected answers for each repetition.
     """
-    correct_answers = []
-    for i in range(len(data)):
-        # Get the most common answer
-        answers = answer_distribution_all.get(i, [])
-        if answers:
-            most_common_answer = max(set(answers), key=answers.count)
-            is_correct = most_common_answer == data[i]['answer']
-            correct_answers.append(is_correct)
-        else:
-            correct_answers.append(False)
-    accuracy = np.sum(correct_answers) / len(data)
-    return accuracy
+    if per_repetition:
+        # Handle per-repetition accuracy calculation
+        repetitions = max(len(answers) for answers in answer_distribution_all.values())
+        accuracies_per_repetition = []
+        repetition_corrected_list = []
+
+        for r in range(repetitions):
+            repetition_corrected = {}
+            for i, question in enumerate(data):
+                answers = answer_distribution_all.get(i, [])
+                if r < len(answers):  # Check if this repetition exists
+                    answer = answers[r]
+                    if answer == question['answer']:
+                        repetition_corrected[i] = True
+                    elif answer == 'Y':  # Handle 'uncertain'
+                        repetition_corrected[i] = 'uncertain'
+                    else:
+                        repetition_corrected[i] = False
+                else:
+                    repetition_corrected[i] = False  # Default to incorrect if repetition is missing
+
+            # Add repetition results to the list
+            repetition_corrected_list.append(repetition_corrected)
+
+            # Treat 'uncertain' as False for accuracy
+            temp_corrected = {k: (False if v == 'uncertain' else v) for k, v in repetition_corrected.items()}
+            accuracies_per_repetition.append(sum(temp_corrected.values()) / len(data))
+
+        return accuracies_per_repetition, repetition_corrected_list
+
+    else:
+        # Aggregate answers and calculate overall accuracy
+        corrected_answers = {}
+        for i in range(len(data)):
+            #print(f"Processing {i + 1}/{len(data)}")
+            answers = answer_distribution_all.get(i, [])
+            if answers:
+                most_common_answer = max(set(answers), key=answers.count)
+                if most_common_answer == data[i]['answer'] and most_common_answer != 'Y':
+                    is_correct = True
+                elif most_common_answer == 'Y':
+                    is_correct = 'uncertain'
+                else:
+                    is_correct = False
+                corrected_answers[i] = is_correct
+            else:
+                corrected_answers[i] = False
+
+        # Calculate accuracy, treating 'uncertain' as False
+        temp_corrected_answers = {k: (False if v == 'uncertain' else v) for k, v in corrected_answers.items()}
+        accuracy = sum(temp_corrected_answers.values()) / len(data)
+        return accuracy, corrected_answers
 
 
 
-def calculate_entropy(answer_distribution_all):
+def calculate_entropy(data, answer_distribution_all):
     """
-    Calculates the normalized entropy of the answer distribution for each question 
+    Calculates the normalized entropy of the answer distribution for each question.
 
     Parameters:
-        answer_distribution (dictionary), where keys are the question indices and values are lists of answers
+        data (list): List of question dictionaries, where each dictionary includes the 'options'.
+        answer_distribution_all (dict): Dictionary where keys are question indices and values are lists of answers.
 
     Returns:
-        dictionary, where keys are the question indices and values are the normalized entropies
+        dict: A dictionary where keys are question indices and values are the normalized entropies.
     """
     normalized_entropy_all = {}
-    for i, answer_dist in enumerate(answer_distribution_all):
+    
+    for i in range(len(answer_distribution_all)):
+        number_of_possible_answers = len(data[i]['options'])  # Total number of possible answers
+        answer_dist = answer_distribution_all[i]  # List of answers from the LLM
+
+        # Count occurrences of each answer
         counts = np.array(list(Counter(answer_dist).values()))
         total = np.sum(counts)
+
+        # Calculate probabilities
         probabilities = counts / total
-        probabilities = probabilities[probabilities > 0]  # Avoid log(0)
-        entropy = -np.sum(probabilities * np.log(probabilities))
-        normalized_entropy_all[i] = entropy / np.log(len(counts))
+        #print(probabilities)
+        # Calculate entropy
+        if total > 0:
+            entropy = -np.sum(probabilities * np.log(probabilities))
+        else:
+            entropy = 0  # Entropy is 0 if there are no answers
+        
+        # Normalize entropy using the number of possible answers
+        if number_of_possible_answers > 1:
+            normalized_entropy = entropy / np.log(number_of_possible_answers)
+        else:
+            normalized_entropy = 0  # No uncertainty if there's only one possible answer
+
+            
+        normalized_entropy_all[i] = np.abs(normalized_entropy)
     
     return normalized_entropy_all
 
 
 
+def categorise_answers(corrected_answers_no_augment, corrected_answers_augment):
+    """
+    Analyzes how the correctness of answers changes between the no augment and augment cases.
 
-def evaluate_answers(data, most_common_answers_no_augment, most_common_answers_augment):
-    #check if the incorrect answers in non-augmented are option Y in augmented
-    incorrect_answers_no_augment = [most_common_answers_no_augment[i] != data[i]['answer'] for i in range(len(data))]
-    incorrect_answers_augment = [most_common_answers_augment[i] != data[i]['answer'] for i in range(len(data))]
-    Y_answers_augment = [most_common_answers_augment[i] == 'Y' for i in range(len(data))]
+    Parameters:
+    - corrected_answers_no_augment (dict): Dictionary with question indices as keys and booleans indicating correctness in the no augment case as values.
+    - corrected_answers_augment (dict): Dictionary with question indices as keys and values indicating correctness in the augment case (True, False, or 'uncertain').
 
+    Returns:
+    - dict: A dictionary containing counts of various categories of answer changes.
+    """
+    # Get the set of common question indices
+    question_indices = set(corrected_answers_no_augment.keys()) & set(corrected_answers_augment.keys())
 
-    #match between incorrect answers in non-augmented and option Y in augmented
-    incorrect_but_uncertain_1 = float(np.sum([incorrect_answers_no_augment[i] and Y_answers_augment[i] for i in range(len(data))])/ np.sum(incorrect_answers_no_augment)*100)
-    incorrect_and_certain_1 = float(np.sum([incorrect_answers_no_augment[i] and not Y_answers_augment[i] for i in range(len(data))])/ np.sum(incorrect_answers_no_augment)*100)
+    # Initialize categories
+    categories = {
+        'mistaken_with_confidence': [],
+        'mistaken_with_uncertainty': [],
+        'mistaken_then_correct': [],
+        'correct_with_confidence': [],
+        'correct_with_uncertainty': [],
+        'correct_then_mistaken': []
+    }
 
-    incorrect_but_uncertain_2 = float(np.sum([most_common_answers_augment[i] == 'Y' for i in range(len(data))])/ len(incorrect_answers_augment*100))
-    #incorrect_and_certain_2 = float(np.sum([incorrect_answers_augment[i] and not Y_answers_augment[i] for i in range(len(data))])/ len(incorrect_answers_augment)*100)  
+    # Analyze each answer
+    for idx in question_indices:
+        no_aug = corrected_answers_no_augment[idx]
+        aug = corrected_answers_augment[idx]
 
+        if no_aug == False and aug == False:
+            categories['mistaken_with_confidence'].append(idx)
+        elif no_aug == False and aug == 'uncertain':
+            categories['mistaken_with_uncertainty'].append(idx)
+        elif no_aug == False and aug == True:
+            categories['mistaken_then_correct'].append(idx)
+        elif no_aug == True and aug == True:
+            categories['correct_with_confidence'].append(idx)
+        elif no_aug == True and aug == 'uncertain':
+            categories['correct_with_uncertainty'].append(idx)
+        elif no_aug == True and aug == False:
+            categories['correct_then_mistaken'].append(idx)
 
-    return incorrect_but_uncertain_1, incorrect_and_certain_1 #, incorrect_but_uncertain_2, incorrect_and_certain_2
+    # Calculate totals
+    total_mistaken_no_augment = sum(1 for idx in question_indices if corrected_answers_no_augment[idx] == False)
+    total_correct_no_augment = sum(1 for idx in question_indices if corrected_answers_no_augment[idx] == True)
 
+    # Print results
+    print("mistaken_with_confidence:", len(categories['mistaken_with_confidence']), 'out of', total_mistaken_no_augment)
+    print("mistaken_with_uncertainty:", len(categories['mistaken_with_uncertainty']), 'out of', total_mistaken_no_augment)
+    print("mistaken_then_correct:", len(categories['mistaken_then_correct']), 'out of', total_mistaken_no_augment)
+    print("correct_with_confidence:", len(categories['correct_with_confidence']), 'out of', total_correct_no_augment)
+    print("correct_with_uncertainty:", len(categories['correct_with_uncertainty']), 'out of', total_correct_no_augment)
+    print("correct_then_mistaken:", len(categories['correct_then_mistaken']), 'out of', total_correct_no_augment)
+
+    return categories
