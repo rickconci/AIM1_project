@@ -4,7 +4,6 @@ import pickle
 
 
 
-
 def main(data, model, plot=True):
 
     print('Running LLM without augmentation')
@@ -21,16 +20,16 @@ def main(data, model, plot=True):
     print('Accuracy augmentation: ', accuracy_augment_average)
 
     print('Saving to pickle files')
-    save_to_pickle(entropy_no_augment_dict, 'entropy_no_augment_dict_'+model+'.pkl')
-    save_to_pickle(corrected_answers_no_augment, 'corrected_no_augment_dict_'+model+'.pkl')
-    save_to_pickle(entropy_augment_dict, 'entropy_augment_dict_'+model+'.pkl')
-    save_to_pickle(corrected_answers_augment, 'corrected_augment_dict_'+model+'.pkl')
+    save_to_pickle(entropy_no_augment_dict, 'pickle_files/entropy_no_augment_dict_'+model+'.pkl')
+    save_to_pickle(corrected_answers_no_augment, 'pickle_files/corrected_no_augment_dict_'+model+'.pkl')
+    save_to_pickle(entropy_augment_dict, 'pickle_files/entropy_augment_dict_'+model+'.pkl')
+    save_to_pickle(corrected_answers_augment, 'pickle_files/corrected_augment_dict_'+model+'.pkl')
 
     categorised_answers = categorise_answers(corrected_answers_no_augment, corrected_answers_augment)
 
     if plot:
-        plot_entropy_vs_accuracy_bar(entropy_no_augment_dict, corrected_answers_no_augment, bins=5)
-        plot_entropy_vs_accuracy_bar(entropy_no_augment_dict, corrected_answers_augment, bins=5)
+        plot_entropy_vs_accuracy_bar(entropy_no_augment_dict, corrected_answers_no_augment, bins=5, save_file='plots/entropy_vs_accuracy_no_augment_'+model+'.png')
+        plot_entropy_vs_accuracy_bar(entropy_no_augment_dict, corrected_answers_augment, bins=5, save_file='plots/entropy_vs_accuracy_augment_'+model+'.png')
 
     
     return None 
@@ -42,19 +41,19 @@ if __name__ == "__main__":
         data = [json.loads(line) for line in file]
     
     #subset data to only include differential diagnosis questions
-    if not os.path.exists('diag_questions.pkl'):
+    if not os.path.exists('pickle_files/diag_questions.pkl'):
         print('Selecting differential diagnosis questions')
         data_with_diag_questions = select_differential_diagnosis_questions(data, system_prompt_question)
         diag_questions = [data_with_diag_questions[i] for i in range(len(data_with_diag_questions)) if data_with_diag_questions[i]['diag_question'] == True]
-        with open('diag_questions.pkl', 'wb') as file:
+        with open('pickle_files/diag_questions.pkl', 'wb') as file:
             pickle.dump(diag_questions, file)
     else:
         print('Loading diag_questions from pickle file')
-        with open('diag_questions.pkl', 'rb') as file:
+        with open('pickle_files/diag_questions.pkl', 'rb') as file:
             diag_questions = pickle.load(file)
 
     #CHANGE THIS!!! 
     model = 'gpt-4o'
     #data_subset = diag_questions[:2000]
 
-    main(diag_questions, model, plot=False)
+    main(diag_questions, model, plot=True)

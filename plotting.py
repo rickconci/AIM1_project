@@ -5,7 +5,7 @@ import seaborn as sns
 
 
 
-def plot_entropy_vs_accuracy_bar(entropy_dict, accuracy_dict, bins=3, bin_labels=None):
+def plot_entropy_vs_accuracy_bar(entropy_dict, accuracy_dict, bins=3, bin_labels=None, save_file=None):
     """
     Plots the distribution of correct and incorrect answers across entropy bins side by side using Seaborn.
     
@@ -59,4 +59,9 @@ def plot_entropy_vs_accuracy_bar(entropy_dict, accuracy_dict, bins=3, bin_labels
     plt.legend(title='Accuracy', loc='upper right')
 
     plt.tight_layout()
-    plt.show()
+    #plt.show()
+
+    if save_file:
+        plt.savefig(save_file)
+
+    return None
