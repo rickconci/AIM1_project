@@ -17,7 +17,7 @@ def main(data, model, plot=True):
     entropy_augment_dict = calculate_entropy(data, answer_distribution_augment_dict)
     accuracy_augment_average, corrected_answers_augment = evaluate_accuracy_uncertainty(data, answer_distribution_augment_dict)
     
-    print('Accuracy no augmentation: ', accuracy_no_augment_average)
+    #print('Accuracy no augmentation: ', accuracy_no_augment_average)
     print('Accuracy augmentation: ', accuracy_augment_average)
 
     print('Saving to pickle files')
@@ -25,6 +25,8 @@ def main(data, model, plot=True):
     save_to_pickle(corrected_answers_no_augment, 'corrected_no_augment_dict_'+model+'.pkl')
     save_to_pickle(entropy_augment_dict, 'entropy_augment_dict_'+model+'.pkl')
     save_to_pickle(corrected_answers_augment, 'corrected_augment_dict_'+model+'.pkl')
+
+    categorised_answers = categorise_answers(corrected_answers_no_augment, corrected_answers_augment)
 
     if plot:
         plot_entropy_vs_accuracy_bar(entropy_no_augment_dict, corrected_answers_no_augment, bins=5)
@@ -53,6 +55,6 @@ if __name__ == "__main__":
 
     #CHANGE THIS!!! 
     model = 'gpt-4o'
-    data_subset = diag_questions[:1000]
-    
-    main(data_subset, model, plot=True)
+    #data_subset = diag_questions[:2000]
+
+    main(diag_questions, model, plot=False)
